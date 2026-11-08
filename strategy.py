@@ -4,14 +4,14 @@ Mechanism: morning (08:30->entry) RTH move direction persists into the close as
 late-day hedging/rebalancing flows chase the day's trend (Gao-Han-Li-Zhou style
 intraday momentum). One entry per session at PARAMS['entry_sec'] CT in the sign of
 the morning move, protective stop = k * trailing mean of prior sessions'
-entry->close absolute move, size = floor(risk cap / stop dollars). Flat by
-evaluator 15:10 close. Gates: (1) entry time, (2) nonzero morning move,
+entry->close absolute move, size = floor(risk cap / stop dollars). Exit 15:00 CT
+before closing-imbalance reversal. Gates: (1) entry time, (2) nonzero morning move,
 (3) stop warmup available, (4) size >= 1.
 """
 import numpy as np
 
-PARAMS = {"entry_sec": 50400, "form_sec": 30600, "stop_k": 1.0, "lookback": 20}
-SYMBOL, POINT_VALUE, RISK_CAP, MAX_QTY, LAST_SEC = 'MNQ', 2.0, 300.0, 50, 54480
+PARAMS = {"entry_sec": 50400, "form_sec": 30600, "stop_k": 1.0, "lookback": 20, "exit_sec": 54000}
+SYMBOL, POINT_VALUE, RISK_CAP, MAX_QTY = 'MNQ', 2.0, 300.0, 50
 
 
 def _plan(df):
@@ -26,7 +26,7 @@ def _plan(df):
         s = sec[idx]
         a = idx[s == PARAMS['form_sec']]
         b = idx[s == PARAMS['entry_sec']]
-        e = idx[s == LAST_SEC]
+        e = idx[s == PARAMS['exit_sec'] - 60]
         if len(hist) >= PARAMS['lookback'] and len(a) and len(b):
             stop = PARAMS['stop_k'] * np.mean(hist[-PARAMS['lookback']:])
             qty = min(MAX_QTY, int(RISK_CAP // (stop * POINT_VALUE))) if stop > 0 else 0
@@ -35,7 +35,7 @@ def _plan(df):
             if qty and sig:
                 risk[idx] = stop * POINT_VALUE
                 level = c[b[0] - 1] - sig * stop
-                for j in idx[(s >= PARAMS['entry_sec'] - 60) & (s < LAST_SEC + 60)]:
+                for j in idx[(s >= PARAMS['entry_sec'] - 60) & (s < PARAMS['exit_sec'] - 60)]:
                     if sig * (c[j] - level) <= 0:
                         break
                     target[j] = sig * qty
