@@ -7,12 +7,15 @@ the morning move, protective stop = k * trailing mean of prior sessions'
 entry->close absolute move, size = floor(risk cap / stop dollars). Exit 15:00 CT
 before closing-imbalance reversal. Gates: (1) entry time, (2) nonzero morning move,
 (3) stop warmup available, (4) size >= 1,
+(6) trailing afternoon move >= cost_mult * stressed round trip,
 (5) one add-on at add_sec only if open profit (pyramid on confirmed trend).
 """
 import numpy as np
 
-PARAMS = {"entry_sec": 50400, "form_sec": 30600, "stop_k": 1.0, "lookback": 20, "exit_sec": 54000, "add_sec": 52200}
+PARAMS = {"entry_sec": 50400, "form_sec": 30600, "stop_k": 1.0, "lookback": 20, "exit_sec": 54000, "add_sec": 52200, "cost_mult": 8}
 SYMBOL, POINT_VALUE, RISK_CAP, MAX_QTY = 'MNQ', 2.0, 300.0, 50
+# Stressed round trip in points: 2 sides * (2 ticks * 0.25 + 1.5 * $0.75 / $2).
+ROUND_TRIP_PTS = 2 * (2 * 0.25 + 1.5 * 0.75 / POINT_VALUE)
 
 
 def _plan(df):
@@ -33,7 +36,8 @@ def _plan(df):
             qty = min(MAX_QTY, int(RISK_CAP // (stop * POINT_VALUE))) if stop > 0 else 0
             # Morning move measured to close of bar b-1, completed before bar b opens.
             sig = int(np.sign(c[b[0] - 1] - o[a[0]]))
-            if qty and sig:
+            edge_room = np.mean(hist[-PARAMS['lookback']:]) >= PARAMS['cost_mult'] * ROUND_TRIP_PTS
+            if qty and sig and edge_room:
                 risk[idx] = stop * POINT_VALUE
                 level = c[b[0] - 1] - sig * stop
                 pos = qty
