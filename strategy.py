@@ -6,11 +6,12 @@ intraday momentum). One entry per session at PARAMS['entry_sec'] CT in the sign 
 the morning move, protective stop = k * trailing mean of prior sessions'
 entry->close absolute move, size = floor(risk cap / stop dollars). Exit 15:00 CT
 before closing-imbalance reversal. Gates: (1) entry time, (2) nonzero morning move,
-(3) stop warmup available, (4) size >= 1.
+(3) stop warmup available, (4) size >= 1,
+(5) one add-on at add_sec only if open profit (pyramid on confirmed trend).
 """
 import numpy as np
 
-PARAMS = {"entry_sec": 50400, "form_sec": 30600, "stop_k": 1.0, "lookback": 20, "exit_sec": 54000}
+PARAMS = {"entry_sec": 50400, "form_sec": 30600, "stop_k": 1.0, "lookback": 20, "exit_sec": 54000, "add_sec": 52200}
 SYMBOL, POINT_VALUE, RISK_CAP, MAX_QTY = 'MNQ', 2.0, 300.0, 50
 
 
@@ -35,10 +36,17 @@ def _plan(df):
             if qty and sig:
                 risk[idx] = stop * POINT_VALUE
                 level = c[b[0] - 1] - sig * stop
+                pos = qty
                 for j in idx[(s >= PARAMS['entry_sec'] - 60) & (s < PARAMS['exit_sec'] - 60)]:
-                    if sig * (c[j] - level) <= 0:
+                    gap = sig * (c[j] - level)
+                    if gap <= 0:
                         break
-                    target[j] = sig * qty
+                    # Pyramid once at add_sec if trade is in profit: added contracts
+                    # declare risk to the same shared stop level (causal, prior bar).
+                    if sec[j] == PARAMS['add_sec'] - 60 and gap > stop:
+                        risk[j] = gap * POINT_VALUE
+                        pos = min(MAX_QTY, qty + int(RISK_CAP // risk[j]))
+                    target[j] = sig * pos
         # history update only after the session is complete (causal for next session)
         if len(b) and len(e):
             hist.append(abs(c[e[0]] - c[b[0] - 1]))
